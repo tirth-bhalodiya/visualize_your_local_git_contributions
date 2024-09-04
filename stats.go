@@ -11,22 +11,22 @@ import (
 
 const outOfRange = 99999
 const daysInLastSixMonths = 183
-const weeksInLastSixMonts = 26
+const weeksInLastSixMonths = 26
 
 type column []int
 
+// stats calculates and prints the stats.
 func stats(email string) {
-	commmits := processRepositories(email)
-	printCommitsStats(commmits)
+	commits := processRepositories(email)
+	printCommitsStats(commits)
 }
 
 func processRepositories(email string) map[int]int {
-	filepath := getDotFilePath()
-	repos := parseFileLinesToSlice(filepath)
+	filePath := getDotFilePath()
+	repos := parseFileLinesToSlice(filePath)
 	daysInMap := daysInLastSixMonths
 
 	commits := make(map[int]int, daysInMap)
-
 	for i := daysInMap; i > 0; i-- {
 		commits[i] = 0
 	}
@@ -43,20 +43,17 @@ func fillCommits(email string, path string, commits map[int]int) map[int]int {
 	if err != nil {
 		panic(err)
 	}
-
 	ref, err := repo.Head()
 	if err != nil {
 		panic(err)
 	}
-
 	iterator, err := repo.Log(&git.LogOptions{From: ref.Hash()})
 	if err != nil {
 		panic(err)
 	}
-
 	offset := calcOffset()
 	err = iterator.ForEach(func(c *object.Commit) error {
-		daysAgo := countDaySinceDate(c.Author.When) + offset
+		daysAgo := countDaysSinceDate(c.Author.When) + offset
 
 		if c.Author.Email != email {
 			return nil
@@ -65,6 +62,7 @@ func fillCommits(email string, path string, commits map[int]int) map[int]int {
 		if daysAgo != outOfRange {
 			commits[daysAgo]++
 		}
+
 		return nil
 	})
 	if err != nil {
@@ -72,26 +70,6 @@ func fillCommits(email string, path string, commits map[int]int) map[int]int {
 	}
 
 	return commits
-}
-
-func getBeginningOfDay(t time.Time) time.Time {
-	year, month, day := t.Date()
-	startOfDay := time.Date(year, month, day, 0, 0, 0, 0, t.Location())
-	return startOfDay
-}
-
-func countDaySinceDate(date time.Time) int {
-	days := 0
-	now := getBeginningOfDay(time.Now())
-	for date.Before(now) {
-		date = date.Add(time.Hour * 24)
-		days++
-		if days > daysInLastSixMonths {
-			return outOfRange
-		}
-	}
-
-	return days
 }
 
 func calcOffset() int {
@@ -118,6 +96,27 @@ func calcOffset() int {
 	return offset
 }
 
+// countDaysSinceDate counts how many days passed since the passed `date`
+func countDaysSinceDate(date time.Time) int {
+	days := 0
+	now := getBeginningOfDay(time.Now())
+	for date.Before(now) {
+		date = date.Add(time.Hour * 24)
+		days++
+		if days > daysInLastSixMonths {
+			return outOfRange
+		}
+	}
+	return days
+}
+
+// getBeginningOfDay given a time.Time calculates the start time of that day
+func getBeginningOfDay(t time.Time) time.Time {
+	year, month, day := t.Date()
+	startOfDay := time.Date(year, month, day, 0, 0, 0, 0, t.Location())
+	return startOfDay
+}
+
 func printCommitsStats(commits map[int]int) {
 	keys := sortMapIntoSlice(commits)
 	cols := buildCols(keys, commits)
@@ -139,16 +138,16 @@ func buildCols(keys []int, commits map[int]int) map[int]column {
 	col := column{}
 
 	for _, k := range keys {
-		week := int(k / 7)
-		daysinweek := k % 7
+		week := int(k / 7) //26,25...1
+		dayinweek := k % 7 // 0,1,2,3,4,5,6
 
-		if daysinweek == 0 {
+		if dayinweek == 0 { //reset
 			col = column{}
 		}
 
 		col = append(col, commits[k])
 
-		if daysinweek == 6 {
+		if dayinweek == 6 {
 			cols[week] = col
 		}
 	}
@@ -159,11 +158,12 @@ func buildCols(keys []int, commits map[int]int) map[int]column {
 func printCells(cols map[int]column) {
 	printMonths()
 	for j := 6; j >= 0; j-- {
-		for i := weeksInLastSixMonts + 1; i >= 0; i-- {
-			if i == weeksInLastSixMonts+1 {
+		for i := weeksInLastSixMonths + 1; i >= 0; i-- {
+			if i == weeksInLastSixMonths+1 {
 				printDayCol(j)
 			}
 			if col, ok := cols[i]; ok {
+				//special case today
 				if i == 0 && j == calcOffset()-1 {
 					printCell(col[j], true)
 					continue
@@ -176,23 +176,23 @@ func printCells(cols map[int]column) {
 			}
 			printCell(0, false)
 		}
+		fmt.Printf("\n")
 	}
 }
 
 func printMonths() {
 	week := getBeginningOfDay(time.Now()).Add(-(daysInLastSixMonths * time.Hour * 24))
 	month := week.Month()
-	fmt.Printf("        ")
+	fmt.Printf("         ")
 	for {
 		if week.Month() != month {
-			fmt.Printf("%s", week.Month().String()[:3])
+			fmt.Printf("%s ", week.Month().String()[:3])
 			month = week.Month()
 		} else {
-			fmt.Printf("   ")
+			fmt.Printf("    ")
 		}
 
 		week = week.Add(7 * time.Hour * 24)
-
 		if week.After(time.Now()) {
 			break
 		}
@@ -201,7 +201,7 @@ func printMonths() {
 }
 
 func printDayCol(day int) {
-	out := "    "
+	out := "     "
 	switch day {
 	case 1:
 		out = " Mon "
@@ -210,15 +210,15 @@ func printDayCol(day int) {
 	case 5:
 		out = " Fri "
 	}
+
 	fmt.Printf(out)
 }
 
 func printCell(val int, today bool) {
 	escape := "\033[0;37;30m"
-
 	switch {
 	case val > 0 && val < 5:
-		escape = "\033[1;37;47m"
+		escape = "\033[1;30;47m"
 	case val >= 5 && val < 10:
 		escape = "\033[1;30;43m"
 	case val >= 10:
@@ -230,16 +230,16 @@ func printCell(val int, today bool) {
 	}
 
 	if val == 0 {
-		fmt.Printf(escape + " - " + "\033[0m")
+		fmt.Printf(escape + "  - " + "\033[0m")
 		return
 	}
 
-	str := " %d "
+	str := "  %d "
 	switch {
 	case val >= 10:
 		str = " %d "
 	case val >= 100:
-		str = " %d "
+		str = "%d "
 	}
 
 	fmt.Printf(escape+str+"\033[0m", val)
